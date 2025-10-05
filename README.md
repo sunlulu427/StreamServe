@@ -50,17 +50,42 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
      ```
    - 对于 RHEL/CentOS/Amazon Linux：
      ```bash
-   sudo yum install -y yum-utils
-   sudo yum-config-manager \
-     --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-   sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
-     docker-compose-plugin
+     sudo yum install -y yum-utils
+     sudo yum-config-manager \
+       --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+     sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
+       docker-compose-plugin
      ```
    安装完成后均需启动并设为开机自启：
    ```bash
    sudo systemctl enable docker
    sudo systemctl start docker
    ```
+   成功后可通过 `docker version`、`docker compose version`（或
+   `docker-compose version`）确认安装结果。
+
+> **镜像源与常见故障排查**
+>
+> - 若访问 `download.docker.com` 失败（常见报错 `SSL_ERROR_SYSCALL` 或无法
+>   下载 `repomd.xml`），可替换为阿里云镜像：
+>   ```bash
+>   sudo tee /etc/yum.repos.d/docker-ce.repo >/dev/null <<'EOF'
+>   [docker-ce-stable]
+>   name=Docker CE Stable - $basearch
+>   baseurl=https://mirrors.aliyun.com/docker-ce/linux/centos/8/$basearch/stable
+>   enabled=1
+>   gpgcheck=1
+>   gpgkey=https://mirrors.aliyun.com/docker-ce/linux/centos/gpg
+>   EOF
+>   sudo yum makecache
+>   sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
+>     docker-compose-plugin
+>   ```
+> - 确保系统时间准确并更新证书仓：`sudo timedatectl set-ntp true`、
+>   `sudo yum install -y ca-certificates`。
+> - 如仓库仅能安装 `docker-compose-plugin` 而缺少 Docker Engine，请先移除
+>   再执行上述完整安装命令，直至 `rpm -ql docker-ce | grep docker.service`
+>   能输出服务文件。
 
 4. **克隆仓库并进入目录**
    ```bash
