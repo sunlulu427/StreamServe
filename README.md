@@ -12,6 +12,37 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
 - 已申请的公网域名及对应 SSL 证书（PEM，含私钥）。
 - Git 与 Docker Hub 的访问权限（若使用私有镜像需提前登录）。
 
+### Git 访问配置
+
+若在远程服务器克隆仓库时遇到 `Permission denied (publickey)` 错误，按
+以下步骤处理：
+
+1. 生成 SSH 密钥（如果尚未生成）：
+   ```bash
+   ssh-keygen -t ed25519 -C "your_email@example.com"
+   # 或使用 RSA: ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+   ```
+   按提示保存在 `~/.ssh/id_ed25519`（或 `id_rsa`）。
+
+2. 上传公钥到 Git 托管平台：
+   ```bash
+   cat ~/.ssh/id_ed25519.pub
+   ```
+   将输出内容复制到 GitHub/GitLab 的 **SSH Keys** 管理界面。
+
+3. 配置 Git 用户信息并测试连接：
+   ```bash
+   git config --global user.name "Your Name"
+   git config --global user.email "your_email@example.com"
+   ssh -T git@github.com   # GitLab 则为 git@gitlab.com
+   ```
+
+4. 如环境无法使用 SSH，可改用 HTTPS 并使用个人访问令牌（PAT）：
+   ```bash
+   git clone https://github.com/<your-org>/streamserve.git
+   ```
+   首次 push 时输入 PAT 作为密码。
+
 ## 部署步骤
 
 按顺序执行以下操作，可在目标云主机上完成端到端部署：
