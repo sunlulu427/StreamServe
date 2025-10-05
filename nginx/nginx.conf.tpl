@@ -54,7 +54,7 @@ http {
     }
   }
 
-  #server {
+  # server {
   #  listen 443 ssl;
   #  listen [::]:443 ssl;
   #  server_name ${STREAMSERVE_DOMAIN};
@@ -83,6 +83,5 @@ http {
   #    add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS';
   #    expires -1;
   #  }
-  #}
-
+  # }
 }
