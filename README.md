@@ -130,8 +130,8 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
    ```bash
    sudo cp .env.example /opt/streamserve/.env
    sudo chmod 600 /opt/streamserve/.env
-   sudo nano /opt/streamserve/.env
-   ```
+ sudo nano /opt/streamserve/.env
+  ```
    根据 `docs/environment-variables.md` 填写 `STREAMSERVE_DOMAIN`、
    `SSL_CERT_PATH`、`PUSH_KEY` 与 `RTMP_ALLOWED_IPS` 等变量。将证书 PEM
    上传至主机后，确保路径与 `.env` 中配置一致。
@@ -142,13 +142,16 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
    ```
    脚本将完成以下任务：
    - 安装/校验 Docker 与基础依赖。
-   - 克隆或更新仓库，并加载 `.env`。
+   - 首次运行时克隆仓库；当使用更新选项时同步远程并加载 `.env`。
    - 使用 `envsubst` 渲染 `nginx/nginx.conf.tpl` 与
      `nginx/conf.d/rtmp.conf.tpl`。
    - 根据 `RTMP_ALLOWED_IPS` 生成 `nginx/conf.d/rtmp-allow.conf` 白名单。
    - 通过 UFW 或 firewalld 开放 80/443/1935 端口。
    - 执行 `docker compose --env-file .env up -d streamserve`（如环境仅提供
      `docker-compose`，则改用 `docker-compose --env-file .env up -d streamserve`）拉起服务。
+   > 默认情况下脚本在目标目录存在仓库时不会执行 `git pull`。若需更新配置，
+   > 可使用 `sudo ./scripts/deploy_streamserve.sh --update` 或
+   > `sudo UPDATE_REPO=1 ./scripts/deploy_streamserve.sh`。
 
 7. **验证运行状态**
    ```bash

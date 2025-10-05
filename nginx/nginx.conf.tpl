@@ -54,34 +54,35 @@ http {
     }
   }
 
-  server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${STREAMSERVE_DOMAIN};
+  #server {
+  #  listen 443 ssl;
+  #  listen [::]:443 ssl;
+  #  server_name ${STREAMSERVE_DOMAIN};
+  #
+  #  ssl_certificate ${SSL_CERT_PATH};
+  #  ssl_certificate_key ${SSL_CERT_PATH};
+  #  ssl_session_cache shared:SSL:10m;
+  #  ssl_session_timeout 10m;
+  #  ssl_protocols TLSv1.2 TLSv1.3;
+  #  ssl_ciphers HIGH:!aNULL:!MD5;
+  #
+  #  location / {
+  #    return 200 'StreamServe HTTPS 监听正常';
+  #    add_header Content-Type text/plain;
+  #  }
+  #
+  #  location /hls/ {
+  #    types {
+  #      application/vnd.apple.mpegurl m3u8;
+  #      video/mp2t ts;
+  #    }
+  #    root /var/www;
+  #    add_header Cache-Control no-cache;
+  #    add_header Access-Control-Allow-Origin *;
+  #    add_header Access-Control-Allow-Headers *;
+  #    add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS';
+  #    expires -1;
+  #  }
+  #}
 
-    ssl_certificate ${SSL_CERT_PATH};
-    ssl_certificate_key ${SSL_CERT_PATH};
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
-    location / {
-      return 200 'StreamServe HTTPS 监听正常';
-      add_header Content-Type text/plain;
-    }
-
-    location /hls/ {
-      types {
-        application/vnd.apple.mpegurl m3u8;
-        video/mp2t ts;
-      }
-      root /var/www;
-      add_header Cache-Control no-cache;
-      add_header Access-Control-Allow-Origin *;
-      add_header Access-Control-Allow-Headers *;
-      add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS';
-      expires -1;
-    }
-  }
 }

@@ -25,6 +25,31 @@ ensure_command() {
 PACKAGE_INDEX_READY=""
 PKG_MANAGER=""
 declare -a COMPOSE_BIN
+UPDATE_REPO="${UPDATE_REPO:-0}"
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --update)
+        UPDATE_REPO=1
+        ;;
+      --help|-h)
+        cat <<'EOF'
+用法: deploy_streamserve.sh [--update]
+
+选项:
+  --update    若目标目录存在仓库，执行 git fetch/pull 更新代码。
+  --help      显示此帮助信息。
+EOF
+        exit 0
+        ;;
+      *)
+        abort "未知参数: $1 (使用 --help 查看用法)"
+        ;;
+    esac
+    shift
+  done
+}
 
 detect_package_manager() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -139,6 +164,10 @@ sync_repository() {
   fi
 
   if [ -d "$TARGET_DIR/.git" ]; then
+    if [ "$UPDATE_REPO" != "1" ]; then
+      log "检测到仓库已存在，跳过更新 (使用 --update 或设置 UPDATE_REPO=1 以同步最新代码)"
+      return
+    fi
     log "更新已有仓库 $TARGET_DIR"
     git -C "$TARGET_DIR" fetch --all --prune
     git -C "$TARGET_DIR" checkout "$BRANCH"
@@ -265,10 +294,13 @@ main() {
   ENV_FILE="${ENV_FILE:-$TARGET_DIR/.env}"
   BRANCH="${BRANCH:-main}"
 
+  parse_args "$@"
   detect_package_manager
   install_docker
   install_support_tools
-  detect_repo_url
+  if [ ! -d "$TARGET_DIR/.git" ] || [ "$UPDATE_REPO" = "1" ]; then
+    detect_repo_url
+  fi
   ensure_command docker
   ensure_command envsubst
   if docker compose version >/dev/null 2>&1; then
