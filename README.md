@@ -22,24 +22,42 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
    ```
 
 2. **更新系统补丁并安装基础工具**
-   ```bash
-   sudo apt-get update -y
-   sudo apt-get upgrade -y
-   sudo apt-get install -y ca-certificates curl git gnupg lsb-release
-   ```
+   - 对于 Debian/Ubuntu：
+     ```bash
+     sudo apt-get update -y
+     sudo apt-get upgrade -y
+     sudo apt-get install -y ca-certificates curl git gnupg lsb-release
+     ```
+   - 对于 RHEL/CentOS/Amazon Linux：
+     ```bash
+     sudo yum update -y
+     sudo yum install -y ca-certificates curl git gnupg2 tar
+     ```
 
 3. **安装 Docker Engine 与 Docker Compose 插件**
+   - 对于 Debian/Ubuntu：
+     ```bash
+     sudo install -m 0755 -d /etc/apt/keyrings
+     curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+       | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+     echo \
+   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+   https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+       | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+     sudo apt-get update -y
+     sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
+       docker-buildx-plugin docker-compose-plugin
+     ```
+   - 对于 RHEL/CentOS/Amazon Linux：
+     ```bash
+   sudo yum install -y yum-utils
+   sudo yum-config-manager \
+     --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+   sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
+     docker-compose-plugin
+     ```
+   安装完成后均需启动并设为开机自启：
    ```bash
-   sudo install -m 0755 -d /etc/apt/keyrings
-   curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-     | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-   echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-     | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-   sudo apt-get update -y
-   sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
-     docker-buildx-plugin docker-compose-plugin
    sudo systemctl enable docker
    sudo systemctl start docker
    ```
@@ -73,7 +91,8 @@ https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
      `nginx/conf.d/rtmp.conf.tpl`。
    - 根据 `RTMP_ALLOWED_IPS` 生成 `nginx/conf.d/rtmp-allow.conf` 白名单。
    - 通过 UFW 或 firewalld 开放 80/443/1935 端口。
-   - 执行 `docker compose --env-file .env up -d streamserve` 拉起服务。
+   - 执行 `docker compose --env-file .env up -d streamserve`（如环境仅提供
+     `docker-compose`，则改用 `docker-compose --env-file .env up -d streamserve`）拉起服务。
 
 7. **验证运行状态**
    ```bash
@@ -81,6 +100,7 @@ https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
    docker compose logs -f streamserve
    docker compose exec -T streamserve nginx -t
    ```
+   若使用 `docker-compose`，可替换以上命令的前缀。
    成功后，可访问 `http://<STREAMSERVE_DOMAIN>/stat` 查看 RTMP 状态页面，
    HLS 流位于 `http://<STREAMSERVE_DOMAIN>/hls/<stream>.m3u8`。
 
@@ -114,5 +134,7 @@ ffprobe "http://<STREAMSERVE_DOMAIN>/hls/stream.m3u8"
 - **打包配置**：`./scripts/package.sh`
 - **回滚/下线**：`docker compose down --volumes`
 - **日志追踪**：`docker compose logs -f streamserve`
+
+若使用 `docker-compose`，可按需替换命令前缀。
 
 更多细节请参考 `AGENTS.md` 与 `docs/environment-variables.md`。

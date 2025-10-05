@@ -22,24 +22,51 @@ ensure_command() {
   fi
 }
 
-apt_install() {
-  local packages
-  packages=("$@")
-  log "安装软件包: ${packages[*]}"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
-}
+PACKAGE_INDEX_READY=""
+PKG_MANAGER=""
+declare -a COMPOSE_BIN
 
-ensure_apt_prereqs() {
-  if [ -z "${APT_READY:-}" ]; then
-    log "刷新 apt 软件源缓存"
-    apt-get update -y
-    APT_READY=1
+detect_package_manager() {
+  if command -v apt-get >/dev/null 2>&1; then
+    PKG_MANAGER="apt"
+  elif command -v yum >/dev/null 2>&1; then
+    PKG_MANAGER="yum"
+  else
+    abort "未找到受支持的包管理器 (apt 或 yum)。"
   fi
 }
 
-ensure_packages() {
-  ensure_apt_prereqs
-  apt_install "$@"
+package_update_once() {
+  if [ -n "$PACKAGE_INDEX_READY" ]; then
+    return
+  fi
+  case "$PKG_MANAGER" in
+    apt)
+      log "刷新 apt 软件源缓存"
+      apt-get update -y
+      ;;
+    yum)
+      log "刷新 yum 软件源缓存"
+      yum makecache -y
+      ;;
+  esac
+  PACKAGE_INDEX_READY=1
+}
+
+pkg_install() {
+  local packages
+  packages=("$@")
+  [ ${#packages[@]} -gt 0 ] || return
+  package_update_once
+  log "安装软件包: ${packages[*]}"
+  case "$PKG_MANAGER" in
+    apt)
+      DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+      ;;
+    yum)
+      yum install -y "${packages[@]}"
+      ;;
+  esac
 }
 
 install_docker() {
@@ -48,18 +75,31 @@ install_docker() {
     return
   fi
 
-  ensure_packages ca-certificates curl gnupg lsb-release
-  install -m 0755 -d /etc/apt/keyrings
-  if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    chmod a+r /etc/apt/keyrings/docker.gpg
-  fi
+  case "$PKG_MANAGER" in
+    apt)
+      pkg_install ca-certificates curl gnupg lsb-release
+      install -m 0755 -d /etc/apt/keyrings
+      if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      fi
 
-  local codename
-  codename="$(lsb_release -cs)"
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu "${codename}" stable" >/etc/apt/sources.list.d/docker.list
-  APT_READY=
-  ensure_packages docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      local codename
+      codename="$(lsb_release -cs)"
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu "${codename}" stable" >/etc/apt/sources.list.d/docker.list
+      PACKAGE_INDEX_READY=""
+      pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      ;;
+    yum)
+      pkg_install ca-certificates curl gnupg2 yum-utils
+      if [ ! -f /etc/yum.repos.d/docker-ce.repo ]; then
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        PACKAGE_INDEX_READY=""
+      fi
+      pkg_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      ;;
+  esac
+
   if command -v systemctl >/dev/null 2>&1; then
     systemctl enable docker
     systemctl start docker
@@ -67,12 +107,23 @@ install_docker() {
 }
 
 install_support_tools() {
-  ensure_packages git gettext-base
+  case "$PKG_MANAGER" in
+    apt)
+      pkg_install git gettext-base
+      ;;
+    yum)
+      pkg_install git gettext
+      ;;
+  esac
 }
 
 detect_repo_url() {
   local candidate
   if [ -n "${REPO_URL:-}" ]; then
+    return
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
     return
   fi
 
@@ -172,7 +223,7 @@ prepare_directories() {
 }
 
 docker_compose() {
-  (cd "$TARGET_DIR" && docker compose "$@")
+  (cd "$TARGET_DIR" && "${COMPOSE_BIN[@]}" "$@")
 }
 
 deploy_stack() {
@@ -214,14 +265,19 @@ main() {
   ENV_FILE="${ENV_FILE:-$TARGET_DIR/.env}"
   BRANCH="${BRANCH:-main}"
 
-  detect_repo_url
-
+  detect_package_manager
   install_docker
   install_support_tools
+  detect_repo_url
   ensure_command docker
   ensure_command envsubst
-  if ! docker compose version >/dev/null 2>&1; then
-    abort "docker compose 未准备就绪，请检查 Docker 安装。"
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_BIN=(docker compose)
+  elif command -v docker-compose >/dev/null 2>&1; then
+    log "检测到 docker compose 插件缺失，将回退使用 docker-compose 二进制"
+    COMPOSE_BIN=(docker-compose)
+  else
+    abort "未找到 docker compose 或 docker-compose，请检查 Docker 安装。"
   fi
   sync_repository
   ensure_env_file
@@ -239,7 +295,7 @@ main() {
   deploy_stack
   verify_runtime
 
-  log "部署完成。可使用 docker compose logs -f streamserve 查看运行日志。"
+  log "部署完成。可使用 ${COMPOSE_BIN[*]} logs -f streamserve 查看运行日志。"
 }
 
 main "$@"
