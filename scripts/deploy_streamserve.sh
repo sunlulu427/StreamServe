@@ -25,6 +25,7 @@ ensure_command() {
 PACKAGE_INDEX_READY=""
 PKG_MANAGER=""
 declare -a COMPOSE_BIN
+COMPOSE_SUPPORTS_ENVFILE=0
 UPDATE_REPO="${UPDATE_REPO:-0}"
 
 parse_args() {
@@ -252,13 +253,16 @@ prepare_directories() {
 }
 
 docker_compose() {
-  (cd "$TARGET_DIR" && "${COMPOSE_BIN[@]}" "$@")
+  if [ "$COMPOSE_SUPPORTS_ENVFILE" -eq 1 ]; then
+    (cd "$TARGET_DIR" && "${COMPOSE_BIN[@]}" --env-file "$ENV_FILE" "$@")
+  else
+    (cd "$TARGET_DIR" && "${COMPOSE_BIN[@]}" "$@")
+  fi
 }
 
 deploy_stack() {
   log "启动 StreamServe 容器"
-  docker_compose --env-file "$ENV_FILE" pull streamserve
-  docker_compose --env-file "$ENV_FILE" up -d streamserve
+  docker_compose --env-file "$ENV_FILE" up -d --build streamserve
 }
 
 verify_runtime() {
@@ -270,15 +274,14 @@ verify_runtime() {
 
 configure_firewall() {
   if command -v ufw >/dev/null 2>&1; then
-    log "配置 UFW 端口开放 (22, 80, 443, 1935)"
+    log "配置 UFW 端口开放 (22, 80, 1935)"
     ufw allow 22/tcp >/dev/null 2>&1 || true
     ufw allow 80/tcp >/dev/null 2>&1 || true
-    ufw allow 443/tcp >/dev/null 2>&1 || true
     ufw allow 1935/tcp >/dev/null 2>&1 || true
-  elif command -v firewall-cmd >/dev/null 2>&1; then
-    log "配置 firewalld 端口开放"
+  elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+    log "配置 firewalld 端口开放 (22, 80, 1935)"
+    firewall-cmd --permanent --add-service=ssh || true
     firewall-cmd --permanent --add-service=http || true
-    firewall-cmd --permanent --add-service=https || true
     firewall-cmd --permanent --add-port=1935/tcp || true
     firewall-cmd --reload || true
   else
@@ -305,9 +308,11 @@ main() {
   ensure_command envsubst
   if docker compose version >/dev/null 2>&1; then
     COMPOSE_BIN=(docker compose)
+    COMPOSE_SUPPORTS_ENVFILE=1
   elif command -v docker-compose >/dev/null 2>&1; then
     log "检测到 docker compose 插件缺失，将回退使用 docker-compose 二进制"
     COMPOSE_BIN=(docker-compose)
+    COMPOSE_SUPPORTS_ENVFILE=0
   else
     abort "未找到 docker compose 或 docker-compose，请检查 Docker 安装。"
   fi

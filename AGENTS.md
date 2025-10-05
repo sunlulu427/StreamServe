@@ -1,10 +1,10 @@
 # 仓库指南
 
 ## 项目结构与模块组织
-将运行时配置集中在 `nginx/`（模板位于 `nginx/conf.d/`），可复用的 Shell 工具放在 `scripts/`，基础设施相关工具置于 `infra/`。文档统一存放在 `docs/`，参考素材放入 `assets/`，测试与烟囱检查按目标目录映射至 `tests/`。避免提交二进制文件，优先构建可复现的制品。
+将运行时配置集中在 `nginx/`（模板位于 `nginx/conf.d/`），可复用的 Shell 工具放在 `scripts/`，基础设施相关工具置于 `infra/`。容器构建文件位于 `docker/`，其中 `Dockerfile` 基于阿里云镜像构建 nginx-rtmp 环境。文档统一存放在 `docs/`，参考素材放入 `assets/`，测试与烟囱检查按目标目录映射至 `tests/`。避免提交二进制文件，优先构建可复现的制品。
 
 ## 构建、测试与开发命令
-使用 `docker compose up --build streamserve` 构建并启动 nginx-rtmp 栈。编辑配置后，通过 `docker compose exec streamserve nginx -t` 校验语法。采用 `./scripts/reload.sh` 在容器内热重载 nginx，使用 `./scripts/package.sh` 导出适用于裸机部署的配置，首次上线云主机时执行 `sudo ./scripts/deploy_streamserve.sh` 进行全自动安装与拉起。
+使用 `docker compose up --build streamserve` 构建并启动 nginx-rtmp 栈（镜像由 `docker/Dockerfile` 本地构建，无需访问 Docker Hub）。编辑配置后，通过 `docker compose exec streamserve nginx -t` 校验语法。采用 `./scripts/reload.sh` 在容器内热重载 nginx，使用 `./scripts/package.sh` 导出适用于裸机部署的配置，首次上线云主机时执行 `sudo ./scripts/deploy_streamserve.sh` 进行全自动安装与拉起。
 
 ## 编码风格与命名约定
 配置与脚本文件命名优先采用小写连字符。环境差异化内容使用 `*.conf.tpl` 模板化。Shell 脚本默认遵循 POSIX sh；若需数组或高级管道控制，可切换 Bash 并启用 `set -euo pipefail`，同时保持两个空格缩进。JSON、YAML 与 Markdown 也保持两个空格缩进与 80 字符软换行。环境变量统一使用大写蛇形命名且语义清晰。

@@ -6,11 +6,11 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
 
 ## 环境准备
 
-- Ubuntu 22.04 LTS（或兼容发行版），具备外网访问与开放的 22/80/443/1935
+- Ubuntu 22.04 LTS（或兼容发行版），具备外网访问与开放的 22/80/1935
   端口。
 - 拥有 `sudo` 权限的运维账号，可通过堡垒机或直接 SSH 连接。
 - 已申请的公网域名及对应 SSL 证书（PEM，含私钥）。
-- Git 与 Docker Hub 的访问权限（若使用私有镜像需提前登录）。
+- Git 与目标 Docker Registry 的访问权限（默认使用 `registry.aliyuncs.com`，若需其他私有镜像请提前登录）。
 
 ### Git 访问配置
 
@@ -146,9 +146,10 @@ StreamServe 是基于 `nginx` 与 `nginx-rtmp-module` 的直播推流参考实�
    - 使用 `envsubst` 渲染 `nginx/nginx.conf.tpl` 与
      `nginx/conf.d/rtmp.conf.tpl`。
    - 根据 `RTMP_ALLOWED_IPS` 生成 `nginx/conf.d/rtmp-allow.conf` 白名单。
-   - 通过 UFW 或 firewalld 开放 80/443/1935 端口。
-   - 执行 `docker compose --env-file .env up -d streamserve`（如环境仅提供
-     `docker-compose`，则改用 `docker-compose --env-file .env up -d streamserve`）拉起服务。
+  - 通过 UFW 或 firewalld 开放 22/80/1935 端口。
+  - 构建并启用本地镜像：脚本会调用 `docker compose up -d --build streamserve`，
+    服务镜像来源于 `docker/Dockerfile`（基础镜像使用阿里云公共仓库
+    `registry.aliyuncs.com/library/alpine:3.20`）。
    > 默认情况下脚本在目标目录存在仓库时不会执行 `git pull`。若需更新配置，
    > 可使用 `sudo ./scripts/deploy_streamserve.sh --update` 或
    > `sudo UPDATE_REPO=1 ./scripts/deploy_streamserve.sh`。
@@ -181,7 +182,7 @@ ffprobe "http://<STREAMSERVE_DOMAIN>/hls/stream.m3u8"
 - `nginx/conf.d/rtmp.conf.tpl` 定义了 `listen 1935`、`application live`、
   `hls_path /var/www/hls` 等核心设置，并引入自动生成的推流 IP 白名单。
 - `nginx/nginx.conf.tpl` 负责加载 RTMP 配置、暴露 HTTP/HLS 入口以及状态
-  页面，HTTPS 监听复用 `.env` 中的证书路径。
+  页面，并保留（默认注释）HTTPS 监听段，必要时可取消注释并提供证书。
 
 如需自定义，修改对应模板后再次运行部署脚本或执行
 `docker compose exec streamserve nginx -t && docker compose restart streamserve`
@@ -197,3 +198,12 @@ ffprobe "http://<STREAMSERVE_DOMAIN>/hls/stream.m3u8"
 若使用 `docker-compose`，可按需替换命令前缀。
 
 更多细节请参考 `AGENTS.md` 与 `docs/environment-variables.md`。
+
+## 常见问题排查
+
+- **拉取 tiangolo/nginx-rtmp 超时**：部署脚本已改为本地构建镜像，无需访问
+  Docker Hub。如果之前因 `Get "https://registry-1.docker.io/v2/": timeout` 导致容器
+  未启动，请更新至最新仓库代码并重新执行 `sudo ./scripts/deploy_streamserve.sh`
+  以构建本地镜像。
+- **`firewalld` 未运行**：脚本仅在 firewalld 处于激活状态时自动放行端口；
+  若使用其他防火墙（如云安全组），请手动确保 22/80/1935 已开放。

@@ -2,12 +2,13 @@ version: "3.9"
 
 services:
   streamserve:
-    image: tiangolo/nginx-rtmp:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: streamserve
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
       - "1935:1935"
     env_file:
       - .env
@@ -20,4 +21,3 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./assets/hls:/var/www/hls
       - ./assets/stat:/var/www/stat
-      - ${SSL_CERT_PATH}:${SSL_CERT_PATH}:ro
