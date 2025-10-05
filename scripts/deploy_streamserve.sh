@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"
+}
+
+abort() {
+  log "ERROR: $*"
+  exit 1
+}
+
+require_root() {
+  if [ "$(id -u)" -ne 0 ]; then
+    abort "必须以 root 身份运行此脚本（可使用 sudo）。"
+  fi
+}
+
+ensure_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    abort "缺少命令 $1，请确认环境安装完整。"
+  fi
+}
+
+apt_install() {
+  local packages
+  packages=("$@")
+  log "安装软件包: ${packages[*]}"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+}
+
+ensure_apt_prereqs() {
+  if [ -z "${APT_READY:-}" ]; then
+    log "刷新 apt 软件源缓存"
+    apt-get update -y
+    APT_READY=1
+  fi
+}
+
+ensure_packages() {
+  ensure_apt_prereqs
+  apt_install "$@"
+}
+
+install_docker() {
+  if command -v docker >/dev/null 2>&1; then
+    log "已检测到 Docker ($(docker --version))，跳过安装"
+    return
+  fi
+
+  ensure_packages ca-certificates curl gnupg lsb-release
+  install -m 0755 -d /etc/apt/keyrings
+  if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+  fi
+
+  local codename
+  codename="$(lsb_release -cs)"
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu "${codename}" stable" >/etc/apt/sources.list.d/docker.list
+  APT_READY=
+  ensure_packages docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable docker
+    systemctl start docker
+  fi
+}
+
+install_support_tools() {
+  ensure_packages git gettext-base
+}
+
+detect_repo_url() {
+  local candidate
+  if [ -n "${REPO_URL:-}" ]; then
+    return
+  fi
+
+  candidate="${SCRIPT_ROOT}/.git"
+  if [ -d "$candidate" ]; then
+    REPO_URL="$(git -C "$SCRIPT_ROOT" config --get remote.origin.url || true)"
+  fi
+}
+
+sync_repository() {
+  if [ ! -d "$TARGET_DIR" ]; then
+    mkdir -p "$TARGET_DIR"
+  fi
+
+  if [ -d "$TARGET_DIR/.git" ]; then
+    log "更新已有仓库 $TARGET_DIR"
+    git -C "$TARGET_DIR" fetch --all --prune
+    git -C "$TARGET_DIR" checkout "$BRANCH"
+    git -C "$TARGET_DIR" pull --ff-only origin "$BRANCH"
+  else
+    [ -n "${REPO_URL:-}" ] || abort "未找到仓库 URL，请通过环境变量 REPO_URL 指定。"
+    log "克隆仓库 $REPO_URL 至 $TARGET_DIR"
+    git clone --branch "$BRANCH" "$REPO_URL" "$TARGET_DIR"
+  fi
+}
+
+ensure_env_file() {
+  if [ -f "$ENV_FILE" ]; then
+    log "使用环境文件 $ENV_FILE"
+    return
+  fi
+
+  if [ -f "$TARGET_DIR/.env.example" ]; then
+    log "未发现 $ENV_FILE，拷贝 .env.example 作为初始模板"
+    cp "$TARGET_DIR/.env.example" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+  else
+    abort "缺少环境文件，且未找到 .env.example。"
+  fi
+}
+
+load_env() {
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+}
+
+require_env() {
+  local name
+  name="$1"
+  if [ -z "${!name:-}" ]; then
+    abort "环境变量 $name 未设置，请在 $ENV_FILE 中配置。"
+  fi
+}
+
+render_template() {
+  local tpl_file output_file
+  tpl_file="$1"
+  output_file="$2"
+  if [ ! -f "$tpl_file" ]; then
+    abort "模板文件不存在: $tpl_file"
+  fi
+  log "渲染模板 $tpl_file -> $output_file"
+  envsubst <"$tpl_file" >"$output_file"
+}
+
+render_nginx_configs() {
+  mkdir -p "$TARGET_DIR/nginx/conf.d"
+  if [ -f "$TARGET_DIR/nginx/nginx.conf.tpl" ]; then
+    render_template "$TARGET_DIR/nginx/nginx.conf.tpl" "$TARGET_DIR/nginx/nginx.conf"
+  fi
+  if [ -f "$TARGET_DIR/nginx/conf.d/rtmp.conf.tpl" ]; then
+    render_template "$TARGET_DIR/nginx/conf.d/rtmp.conf.tpl" "$TARGET_DIR/nginx/conf.d/rtmp.conf"
+  fi
+}
+
+render_rtmp_allowlist() {
+  local allow_file entries entry trimmed
+  allow_file="$TARGET_DIR/nginx/conf.d/rtmp-allow.conf"
+  IFS=',' read -r -a entries <<<"$RTMP_ALLOWED_IPS"
+  {
+    printf "    # 由 deploy_streamserve.sh 自动生成，请勿手动修改\n"
+    for entry in "${entries[@]}"; do
+      trimmed="$(printf '%s' "$entry" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      if [ -n "$trimmed" ]; then
+        printf "    allow publish %s;\n" "$trimmed"
+      fi
+    done
+    printf "    deny publish all;\n"
+  } >"$allow_file"
+}
+
+prepare_directories() {
+  mkdir -p "$TARGET_DIR/assets/hls"
+  mkdir -p "$TARGET_DIR/assets/stat"
+}
+
+docker_compose() {
+  (cd "$TARGET_DIR" && docker compose "$@")
+}
+
+deploy_stack() {
+  log "启动 StreamServe 容器"
+  docker_compose --env-file "$ENV_FILE" pull streamserve
+  docker_compose --env-file "$ENV_FILE" up -d streamserve
+}
+
+verify_runtime() {
+  log "执行 nginx 配置校验"
+  docker_compose exec -T streamserve nginx -t
+  log "当前容器状态"
+  docker_compose ps streamserve
+}
+
+configure_firewall() {
+  if command -v ufw >/dev/null 2>&1; then
+    log "配置 UFW 端口开放 (22, 80, 443, 1935)"
+    ufw allow 22/tcp >/dev/null 2>&1 || true
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+    ufw allow 1935/tcp >/dev/null 2>&1 || true
+  elif command -v firewall-cmd >/dev/null 2>&1; then
+    log "配置 firewalld 端口开放"
+    firewall-cmd --permanent --add-service=http || true
+    firewall-cmd --permanent --add-service=https || true
+    firewall-cmd --permanent --add-port=1935/tcp || true
+    firewall-cmd --reload || true
+  else
+    log "未检测到受支持的防火墙工具，跳过端口配置"
+  fi
+}
+
+main() {
+  require_root
+
+  SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  TARGET_DIR="${TARGET_DIR:-/opt/streamserve}"
+  ENV_FILE="${ENV_FILE:-$TARGET_DIR/.env}"
+  BRANCH="${BRANCH:-main}"
+
+  detect_repo_url
+
+  install_docker
+  install_support_tools
+  ensure_command docker
+  ensure_command envsubst
+  if ! docker compose version >/dev/null 2>&1; then
+    abort "docker compose 未准备就绪，请检查 Docker 安装。"
+  fi
+  sync_repository
+  ensure_env_file
+  load_env
+
+  require_env STREAMSERVE_DOMAIN
+  require_env SSL_CERT_PATH
+  require_env PUSH_KEY
+  require_env RTMP_ALLOWED_IPS
+
+  prepare_directories
+  render_nginx_configs
+  render_rtmp_allowlist
+  configure_firewall
+  deploy_stack
+  verify_runtime
+
+  log "部署完成。可使用 docker compose logs -f streamserve 查看运行日志。"
+}
+
+main "$@"

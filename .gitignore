@@ -1,0 +1,7 @@
+nginx/conf.d/rtmp-allow.conf
+nginx/conf.d/rtmp.conf
+nginx/nginx.conf
+.env
+*.log
+*.pid
+__pycache__/

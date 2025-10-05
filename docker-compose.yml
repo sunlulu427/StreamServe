@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  streamserve:
+    image: tiangolo/nginx-rtmp:latest
+    container_name: streamserve
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "1935:1935"
+    env_file:
+      - .env
+    environment:
+      STREAMSERVE_DOMAIN: ${STREAMSERVE_DOMAIN}
+      SSL_CERT_PATH: ${SSL_CERT_PATH}
+      PUSH_KEY: ${PUSH_KEY}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./assets/hls:/var/www/hls
+      - ./assets/stat:/var/www/stat
+      - ${SSL_CERT_PATH}:${SSL_CERT_PATH}:ro

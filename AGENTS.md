@@ -4,10 +4,10 @@
 将运行时配置集中在 `nginx/`（模板位于 `nginx/conf.d/`），可复用的 Shell 工具放在 `scripts/`，基础设施相关工具置于 `infra/`。文档统一存放在 `docs/`，参考素材放入 `assets/`，测试与烟囱检查按目标目录映射至 `tests/`。避免提交二进制文件，优先构建可复现的制品。
 
 ## 构建、测试与开发命令
-使用 `docker compose up --build streamserve` 构建并启动 nginx-rtmp 栈。编辑配置后，通过 `docker compose exec streamserve nginx -t` 校验语法。采用 `./scripts/reload.sh` 在容器内热重载 nginx，使用 `./scripts/package.sh` 导出适用于裸机部署的配置。
+使用 `docker compose up --build streamserve` 构建并启动 nginx-rtmp 栈。编辑配置后，通过 `docker compose exec streamserve nginx -t` 校验语法。采用 `./scripts/reload.sh` 在容器内热重载 nginx，使用 `./scripts/package.sh` 导出适用于裸机部署的配置，首次上线云主机时执行 `sudo ./scripts/deploy_streamserve.sh` 进行全自动安装与拉起。
 
 ## 编码风格与命名约定
-配置与脚本文件命名优先采用小写连字符。环境差异化内容使用 `*.conf.tpl` 模板化。Shell 脚本遵循 POSIX sh，启用 `set -euo pipefail`，并使用两个空格缩进；JSON、YAML 与 Markdown 也保持两个空格缩进与 80 字符软换行。环境变量统一使用大写蛇形命名且语义清晰。
+配置与脚本文件命名优先采用小写连字符。环境差异化内容使用 `*.conf.tpl` 模板化。Shell 脚本默认遵循 POSIX sh；若需数组或高级管道控制，可切换 Bash 并启用 `set -euo pipefail`，同时保持两个空格缩进。JSON、YAML 与 Markdown 也保持两个空格缩进与 80 字符软换行。环境变量统一使用大写蛇形命名且语义清晰。
 
 ## 测试规范
 提交前运行 `docker compose exec streamserve nginx -t`，并执行 `tests/` 中相应的目标化烟囱测试。新增检查应与对应代码同目录维护；Shell 测试文件命名为 `test_<area>.sh`，并将样例数据置于 `tests/fixtures/`。为每个 server block 保持 curl 或 k6 覆盖，金标准输出存放于 `tests/golden/` 以便确定性比对。
